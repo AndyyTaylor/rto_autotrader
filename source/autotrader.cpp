@@ -4,6 +4,7 @@
 #include <cstring>
 #include <iostream>
 #include <unistd.h> 
+#include <arpa/inet.h>
 
 AutoTrader::AutoTrader(const std::string& NAME, const std::string& SECRET, const std::string& EXEC_HOST, const int EXEC_PORT) : NAME{NAME}, SECRET{SECRET} {
     if ((exec_sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
@@ -45,20 +46,51 @@ AutoTrader::AutoTrader(const std::string& NAME, const std::string& SECRET, const
         throw "connection failed";
     }
 
-    struct UpdateMessage {
-        char size1;
-        char size2;
+    struct Header {
+        unsigned short size;
         char type;
     };
 
-    UpdateMessage msg;
+    struct UpdateMessage {
+        unsigned char instrument;
+        unsigned int sequence_no;
+        unsigned int prices[20];
+    };
 
-    int valread;
-    valread = read( info_sock , &msg, sizeof(msg)); 
+    int num_read = 0;
+    while (num_read < 10) {
+        Header header;
+        read(info_sock, &header, sizeof(header));
+        header.size = ntohs(header.size);
 
-    printf("valread: %d\n", valread);
+        std::cout << header.size << '\n';
+
+        if (header.type == 6) {
+            UpdateMessage msg;
+            read(info_sock, &msg, sizeof(msg));
+
+            for (int i = 0; i < 20; i++) {
+                std::cout << ntohl(msg.prices[i]) << ", ";
+            }
+            std::cout << '\n';
+        } else {
+            std::cout << "unknown header type: " << (int) header.type << '\n';
+
+            char buffer[header.size] = {0};
+            read(info_sock, &buffer, sizeof(buffer));
+        }
+
+        num_read++;
+    }
+
+    // UpdateMessage msg;
+
+    // int valread;
+    // valread = read( info_sock , &msg, sizeof(msg)); 
+
+    // printf("valread: %d\n", valread);
     
-    std::cout << (int) msg.size1 << ", " << (int) msg.size2 << ", " << (int) msg.type << '\n';
+    // std::cout << (int) msg.size1 << ", " << (int) msg.size2 << ", " << (int) msg.type << '\n';
 
     std::cout << "waiting...";
     char a;
