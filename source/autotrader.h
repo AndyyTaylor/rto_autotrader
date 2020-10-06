@@ -15,6 +15,7 @@ class AutoTrader {
         void send_login_message();
 
         int exec_sock;
+        int info_sock;
         const std::string NAME;
         const std::string SECRET;
 };
