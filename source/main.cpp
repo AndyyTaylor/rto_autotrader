@@ -77,13 +77,12 @@ int main() {
         auto info_sock = createInformationSocket(INFO_HOST, INFO_PORT);
 
         auto trader = AutoTrader(NAME, SECRET, exec_sock);
-
         trader.login();
 
         auto num_read = 0;
         messages::Header header;
         char buffer[BUFFER_SIZE];
-        while (num_read < 30) {
+        while (num_read < 1000) {
             read(info_sock, &buffer, BUFFER_SIZE);
 
             memcpy(&header, buffer, sizeof(header));

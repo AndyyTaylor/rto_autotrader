@@ -28,16 +28,49 @@ void AutoTrader::login() {
 }
 
 void AutoTrader::on_order_book_update(int instrument, int sequence_no, std::vector<int>& ask_prices, std::vector<int>& ask_volumes, std::vector<int>& bid_prices, std::vector<int>& bid_volumes) {
-    std::cout << "(" << instrument << ") " << sequence_no << ": ";
-    for (int i = 0; i < ask_prices.size(); i++) {
-        std::cout << ask_prices[i] << ", ";
+    if (instrument == 1 || ask_prices.size() == 0 || bid_prices.size() == 0) {
+        return;
     }
-    std::cout << " | ";
-    for (int i = 0; i < bid_volumes.size(); i++) {
-        std::cout << bid_volumes[i] << ", ";
-    }
-    std::cout << '\n';
+
+    int mid_price = clampPrice((bid_prices[0] + ask_prices[0]) / 2);
+    int bid_price = mid_price - 100 - etf_position_ * 100;
+    int ask_price = mid_price + 100 + etf_position_ * 100;
+
+    insertOrder(1, ask_price, 1, 1);
+
+    std::cout << bid_price << " - " << ask_price << '\n';
 }
+
+int AutoTrader::clampPrice(int price) {
+    return price / 100 * 100;
+}
+
+void AutoTrader::insertOrder(int side, int price, int volume, int lifespan) {
+    int size = 17;
+    #pragma pack(push,1)
+    struct InsertMessage {
+        unsigned short size;
+        char type;
+        int id;
+        char side;
+        int price;
+        int volume;
+        char lifespan;
+    };
+    #pragma pack(pop)
+
+    InsertMessage msg;
+    msg.size = htons(size);
+    msg.type = 4;
+    msg.id = htonl(++order_id_);
+    msg.side = side;
+    msg.price = htonl(price);
+    msg.volume = htonl(volume);
+    msg.lifespan = lifespan;
+
+    send(exec_sock_, &msg, size, 0);
+}
+
 
 // unsigned char *buffer=reinterpret_cast<unsigned char *>(malloc(sizeof(msg)));
 // int i;
@@ -53,3 +86,5 @@ void AutoTrader::on_order_book_update(int instrument, int sequence_no, std::vect
 
 // //freeing memory..
 // free(buffer);
+
+// std::cout << ntohl(msg.id) << '\n';
