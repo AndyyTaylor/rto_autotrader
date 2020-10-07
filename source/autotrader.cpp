@@ -1,5 +1,6 @@
 
 #include "autotrader.h"
+#include "messages.h"
 
 #include <cstring>
 #include <iostream>
@@ -7,70 +8,100 @@
 #include <arpa/inet.h>
 #include <vector>
 
-void AutoTrader::login() {
-    int size = 73;
-    struct LoginMessage {
-        unsigned short size;
-        char type;
-        char name[20];
-        char secret[50];
-    };
-
-    LoginMessage msg;
-    msg.size = htons(73);
-    msg.type = 5;
-    for (int i = 0; i < 20; i++) msg.name[i] = 0;
-    for (int i = 0; i < 50; i++) msg.secret[i] = 0;
-    strcpy(msg.name, name_.c_str());
-    strcpy(msg.secret, secret_.c_str());
-
-    send(exec_sock_, &msg, 73, 0);
-}
-
-void AutoTrader::on_order_book_update(int instrument, int sequence_no, std::vector<int>& ask_prices, std::vector<int>& ask_volumes, std::vector<int>& bid_prices, std::vector<int>& bid_volumes) {
+void AutoTrader::orderBookUpdate(int instrument, int sequence_no, std::vector<int>& ask_prices, std::vector<int>& ask_volumes, std::vector<int>& bid_prices, std::vector<int>& bid_volumes) {
     if (instrument == 1 || ask_prices.size() == 0 || bid_prices.size() == 0) {
         return;
     }
 
-    int mid_price = clampPrice((bid_prices[0] + ask_prices[0]) / 2);
-    int bid_price = mid_price - 100 - etf_position_ * 100;
-    int ask_price = mid_price + 100 + etf_position_ * 100;
+    auto mid_price = clampPrice((bid_prices[0] + ask_prices[0]) / 2);
+    auto bid_price = mid_price - 100 - etf_position_ * 100;
+    auto ask_price = mid_price + 100 - etf_position_ * 100;
 
-    insertOrder(1, ask_price, 1, 1);
+    if (bid_id_ != 0 && bid_price != bid_price_) {
+        cancelOrder(bid_id_);
+        bid_id_ = 0;
+    }
 
-    std::cout << bid_price << " - " << ask_price << '\n';
+    if (ask_id_ != 0 && ask_price != ask_price_) {
+        cancelOrder(ask_id_);
+        ask_id_ = 0;
+    }
+
+    if (bid_id_ == 0 && etf_position_ < 100) {
+        bid_id_ = ++order_id_;
+        bid_price_ = bid_price;
+        insertOrder(bid_id_, 1, bid_price, 1, 1);
+    }
+
+    if (ask_id_ == 0 && etf_position_ > -100) {
+        ask_id_ = ++order_id_;
+        ask_price_ = ask_price;
+        insertOrder(ask_id_, 0, ask_price, 1, 1);
+    }
+
+    std::cout << bid_price << " - " << ask_price << " (" << etf_position_ << ")\n";
+}
+
+void AutoTrader::positionUpdate(int future_position, int etf_position) {
+    etf_position_ = etf_position;
+}
+
+void AutoTrader::orderStatusUpdate(int id, int fill_volume, int remaining_volume, int fees) {
+    if (remaining_volume == 0) {
+        if (id == bid_id_) {
+            bid_id_ = 0;
+        } else if (id == ask_id_) {
+            ask_id_ = 0;
+        }
+    }
 }
 
 int AutoTrader::clampPrice(int price) {
     return price / 100 * 100;
 }
 
-void AutoTrader::insertOrder(int side, int price, int volume, int lifespan) {
-    int size = 17;
-    #pragma pack(push,1)
-    struct InsertMessage {
-        unsigned short size;
-        char type;
-        int id;
-        char side;
-        int price;
-        int volume;
-        char lifespan;
-    };
-    #pragma pack(pop)
+void AutoTrader::login() {
+    auto msg = messages::Message{};
 
-    InsertMessage msg;
+    msg.size = htons(73);
+    msg.type = 5;
+    for (auto i = 0; i < 20; i++) msg.login.name[i] = 0;
+    for (auto i = 0; i < 50; i++) msg.login.secret[i] = 0;
+    strcpy(msg.login.name, name_.c_str());
+    strcpy(msg.login.secret, secret_.c_str());
+
+    send(exec_sock_, &msg, 73, 0);
+}
+
+void AutoTrader::insertOrder(int id, int side, int price, int volume, int lifespan) {
+    auto size = 17;
+
+    auto msg = messages::Message{};
     msg.size = htons(size);
     msg.type = 4;
-    msg.id = htonl(++order_id_);
-    msg.side = side;
-    msg.price = htonl(price);
-    msg.volume = htonl(volume);
-    msg.lifespan = lifespan;
+    msg.insert_order.id = htonl(id);
+    msg.insert_order.side = side;
+    msg.insert_order.price = htonl(price);
+    msg.insert_order.volume = htonl(volume);
+    msg.insert_order.lifespan = lifespan;
+
+    std::cout << "placing " << id << " @ " << price << '\n';
 
     send(exec_sock_, &msg, size, 0);
 }
 
+void AutoTrader::cancelOrder(int id) {
+    auto size = 7;
+
+    auto msg = messages::Message{};
+    msg.size = htons(size);
+    msg.type = 2;
+    msg.cancel_order.id = htonl(id);
+
+    std::cout << "cancelling " << id << '\n';
+
+    send(exec_sock_, &msg, size, 0);
+}
 
 // unsigned char *buffer=reinterpret_cast<unsigned char *>(malloc(sizeof(msg)));
 // int i;

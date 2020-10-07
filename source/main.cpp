@@ -6,6 +6,7 @@
 #include <vector>
 #include <arpa/inet.h>
 #include <cstring>
+#include <fcntl.h>
 
 #include "autotrader.h"
 #include "messages.h"
@@ -21,7 +22,8 @@ constexpr char SECRET[] = "password";
 
 int createExecutionSocket(const std::string& host, const int port) {
     std::cout << "connecting to execution channel ... ";
-    int sock = socket(AF_INET, SOCK_STREAM, 0);
+
+    auto sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0) {
         throw "socket creation error";
     }
@@ -38,6 +40,10 @@ int createExecutionSocket(const std::string& host, const int port) {
         throw "connection failed";
     }
 
+    if (fcntl(sock, F_SETFL, fcntl(sock, F_GETFL) | O_NONBLOCK) < 0) {
+        throw "failed to set sock to non-blocking";
+    }
+
     std::cout << "done\n";
     return sock;
 }
@@ -45,12 +51,12 @@ int createExecutionSocket(const std::string& host, const int port) {
 int createInformationSocket(const std::string& host, const int port) {
     std::cout << "connecting to information channel ... ";
 
-    int sock = socket(AF_INET, SOCK_DGRAM, 0);
+    auto sock = socket(AF_INET, SOCK_DGRAM, 0);
     if (sock < 0) {
         throw "socket creation error";
     }
 
-    int opt = 1;
+    auto opt = 1;
     if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(int)) < 0) {
         throw "setsockopt(SO_REUSEADDR) failed";
     }
@@ -67,6 +73,10 @@ int createInformationSocket(const std::string& host, const int port) {
         throw "connection failed";
     }
 
+    if (fcntl(sock, F_SETFL, fcntl(sock, F_GETFL) | O_NONBLOCK) < 0) {
+        throw "failed to set sock to non-blocking";
+    }
+
     std::cout << "done\n";
     return sock;
 }
@@ -80,18 +90,29 @@ int main() {
         trader.login();
 
         auto num_read = 0;
-        messages::Header header;
-        char buffer[BUFFER_SIZE];
-        while (num_read < 1000) {
-            read(info_sock, &buffer, BUFFER_SIZE);
+        auto msg = messages::Message{};
+        while (num_read < 10000) {
+            auto ret = read(exec_sock, &msg, sizeof(msg));
+            if (ret < 0) {
+                if (errno != EWOULDBLOCK) {
+                    throw errno;
+                }
 
-            memcpy(&header, buffer, sizeof(header));
-            header.size = ntohs(header.size);
+                ret = read(info_sock, &msg, sizeof(msg));
+                if (ret < 0) {
+                    if (errno != EWOULDBLOCK) {
+                        throw errno;
+                    }
 
-            if (header.type == 6) {
-                messages::OrderBookUpdate msg;
-                memcpy(&msg, buffer, sizeof(msg));
-                msg.sequence_no = ntohl(msg.sequence_no);
+                    continue;
+                }
+            }
+
+            msg.size = ntohs(msg.size);
+
+            if (msg.type == 6) {
+                auto order_book_update = msg.order_book_update;
+                order_book_update.sequence_no = ntohl(order_book_update.sequence_no);
 
                 std::vector<std::vector<int>> book;
                 for (int i = 0; i < 20; i++) {
@@ -99,17 +120,31 @@ int main() {
                         book.push_back(std::vector<int>{});
                     }
 
-                    msg.prices[i] = ntohl(msg.prices[i]);
+                    order_book_update.prices[i] = ntohl(order_book_update.prices[i]);
 
                     // being 0 is the same as it not existing
-                    if (msg.prices[i] != 0) {
-                        book.back().push_back(msg.prices[i]);
+                    if (order_book_update.prices[i] != 0) {
+                        book.back().push_back(order_book_update.prices[i]);
                     }
                 }
 
-                trader.on_order_book_update(msg.instrument, msg.sequence_no, book[0], book[1], book[2], book[3]);
+                trader.orderBookUpdate(order_book_update.instrument, order_book_update.sequence_no, book[0], book[1], book[2], book[3]);
+            } else if (msg.type == 7) {
+                auto order_status_update = msg.order_status_update;
+                order_status_update.id = ntohl(order_status_update.id);
+                order_status_update.fill_volume = ntohl(order_status_update.fill_volume);
+                order_status_update.remaining_volume = ntohl(order_status_update.remaining_volume);
+                order_status_update.fees = ntohl(order_status_update.fees);
+
+                trader.orderStatusUpdate(order_status_update.id, order_status_update.fill_volume, order_status_update.remaining_volume, order_status_update.fees);
+            } else if (msg.type == 8) {
+                auto position_update = msg.position_update;
+                position_update.etf_position = ntohl(position_update.etf_position);
+                position_update.future_position = ntohl(position_update.future_position);
+
+                trader.positionUpdate(position_update.future_position, position_update.etf_position);
             } else {
-                std::cout << "unknown header type: " << (int) header.type << " size: " << header.size << '\n';
+                std::cout << "unknown header type: " << (int) msg.type << " size: " << msg.size << '\n';
             }
 
             num_read++;
