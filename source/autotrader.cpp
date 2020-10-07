@@ -5,122 +5,38 @@
 #include <iostream>
 #include <unistd.h> 
 #include <arpa/inet.h>
+#include <vector>
 
-AutoTrader::AutoTrader(const std::string& NAME, const std::string& SECRET, const std::string& EXEC_HOST, const int EXEC_PORT) : NAME{NAME}, SECRET{SECRET} {
-    if ((exec_sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-        throw "socket creation error";
-    }
-    
-    struct sockaddr_in serv_addr;
-    serv_addr.sin_family = AF_INET; 
-    serv_addr.sin_port = htons(EXEC_PORT);
-
-    if (inet_pton(AF_INET, EXEC_HOST.c_str(), &serv_addr.sin_addr) <= 0) { 
-        throw "invalid address";
-    } 
-
-    if (connect(exec_sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)  { 
-        throw "connection failed";
-    }
-
-    send_login_message();
-
-    if ((info_sock = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
-        throw "socket creation error";
-    }
-
-    int on = 1;
-    if (setsockopt(info_sock, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(int)) < 0) {
-        throw "setsockopt(SO_REUSEADDR) failed";
-    }
-
-    // struct sockaddr_in serv_addr;
-    serv_addr.sin_family = AF_INET; 
-    serv_addr.sin_port = htons(12346);
-
-    if (inet_pton(AF_INET, std::string{"239.255.1.1"}.c_str(), &serv_addr.sin_addr) <= 0) { 
-        throw "invalid address";
-    }
-
-    if (bind(info_sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)  { 
-        throw "connection failed";
-    }
-
-    struct Header {
-        unsigned short size;
-        char type;
-    };
-
-    struct UpdateMessage {
-        unsigned char instrument;
-        unsigned int sequence_no;
-        unsigned int prices[20];
-    };
-
-    int num_read = 0;
-    while (num_read < 10) {
-        Header header;
-        read(info_sock, &header, sizeof(header));
-        header.size = ntohs(header.size);
-
-        std::cout << header.size << '\n';
-
-        if (header.type == 6) {
-            UpdateMessage msg;
-            read(info_sock, &msg, sizeof(msg));
-
-            for (int i = 0; i < 20; i++) {
-                std::cout << ntohl(msg.prices[i]) << ", ";
-            }
-            std::cout << '\n';
-        } else {
-            std::cout << "unknown header type: " << (int) header.type << '\n';
-
-            char buffer[header.size] = {0};
-            read(info_sock, &buffer, sizeof(buffer));
-        }
-
-        num_read++;
-    }
-
-    // UpdateMessage msg;
-
-    // int valread;
-    // valread = read( info_sock , &msg, sizeof(msg)); 
-
-    // printf("valread: %d\n", valread);
-    
-    // std::cout << (int) msg.size1 << ", " << (int) msg.size2 << ", " << (int) msg.type << '\n';
-
-    std::cout << "waiting...";
-    char a;
-    std::cin >> a;
-
-    // todo 1) parse book
-    // todo 2) move this logic to main, so autotrader.h models autotrader.py
-    // todo 3) place some dang trades!
-}
-
-void AutoTrader::send_login_message() {
+void AutoTrader::login() {
     int size = 73;
     struct LoginMessage {
-        char size1;
-        char size2;
+        unsigned short size;
         char type;
         char name[20];
         char secret[50];
     };
 
     LoginMessage msg;
-    msg.size1 = 0;
-    msg.size2 = 73;
+    msg.size = htons(73);
     msg.type = 5;
     for (int i = 0; i < 20; i++) msg.name[i] = 0;
     for (int i = 0; i < 50; i++) msg.secret[i] = 0;
-    strcpy(msg.name, NAME.c_str());
-    strcpy(msg.secret, SECRET.c_str());
+    strcpy(msg.name, name_.c_str());
+    strcpy(msg.secret, secret_.c_str());
 
-    send(exec_sock, &msg, msg.size2, 0);
+    send(exec_sock_, &msg, 73, 0);
+}
+
+void AutoTrader::on_order_book_update(int instrument, int sequence_no, std::vector<int>& ask_prices, std::vector<int>& ask_volumes, std::vector<int>& bid_prices, std::vector<int>& bid_volumes) {
+    std::cout << "(" << instrument << ") " << sequence_no << ": ";
+    for (int i = 0; i < ask_prices.size(); i++) {
+        std::cout << ask_prices[i] << ", ";
+    }
+    std::cout << " | ";
+    for (int i = 0; i < bid_volumes.size(); i++) {
+        std::cout << bid_volumes[i] << ", ";
+    }
+    std::cout << '\n';
 }
 
 // unsigned char *buffer=reinterpret_cast<unsigned char *>(malloc(sizeof(msg)));
