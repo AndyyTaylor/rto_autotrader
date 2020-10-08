@@ -89,9 +89,9 @@ int main() {
         auto trader = AutoTrader(NAME, SECRET, exec_sock);
         trader.login();
 
-        auto num_read = 0;
+        // auto num_read = 0;
         auto msg = messages::Message{};
-        while (num_read < 10000) {
+        while (1) {
             auto ret = read(exec_sock, &msg, sizeof(msg));
             if (ret < 0) {
                 if (errno != EWOULDBLOCK) {
@@ -128,7 +128,7 @@ int main() {
                     }
                 }
 
-                trader.orderBookUpdate(order_book_update.instrument, order_book_update.sequence_no, book[0], book[1], book[2], book[3]);
+                trader.orderBookUpdate(order_book_update.instrument == 0 ? FUTURE : ETF, order_book_update.sequence_no, book[0], book[1], book[2], book[3]);
             } else if (msg.type == 7) {
                 auto order_status_update = msg.order_status_update;
                 order_status_update.id = ntohl(order_status_update.id);
@@ -144,10 +144,10 @@ int main() {
 
                 trader.positionUpdate(position_update.future_position, position_update.etf_position);
             } else {
-                std::cout << "unknown header type: " << (int) msg.type << " size: " << msg.size << '\n';
+                // std::cout << "unknown header type: " << (int) msg.type << " size: " << msg.size << '\n';
             }
 
-            num_read++;
+            // num_read++;
         }
 
     } catch(const std::exception& e) {
