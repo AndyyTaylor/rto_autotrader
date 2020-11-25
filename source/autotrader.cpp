@@ -28,7 +28,7 @@ void AutoTrader::orderBookUpdate(Instrument instrument, int sequence_no, std::ve
         return;
     }
 
-    auto indiff_price = theo_price_ - etf_position_ * 2.1;
+    int indiff_price = theo_price_ - etf_position_ * 2.1;
     auto bid_price = clampPrice(indiff_price - 100);
     auto ask_price = clampPrice(indiff_price + 100);
 
@@ -93,7 +93,7 @@ void AutoTrader::orderBookUpdate(Instrument instrument, int sequence_no, std::ve
         }
     }
 
-    std::cout << bid_price_ << " - " << ask_price_ << " (" << etf_position_ << ")\n";
+    std::cout << indiff_price << ": " <<  bid_price << ", " << ask_price << " # " << bid_price_ << " - " << ask_price_ << " (" << etf_position_ << ")\n";
 }
 
 void AutoTrader::positionUpdate(int future_position, int etf_position) {
