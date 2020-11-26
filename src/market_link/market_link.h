@@ -29,12 +29,17 @@ class MarketLink {
     // Runs the game loop
     void runLoop();
 
+    void cancelOrder(int order_id);
+    void insertOrder(int id, Side side, int price, int volume, Lifespan lifespan);
+
  private:
     int createExecutionSocket();
     int createInformationSocket();
 
-    bool readNextMessage(messages::Message& msg);
+    void readNextMessage(messages::Message& msg);
     void handleOrderBookUpdate(messages::Message& msg);
+    void handleOrderStatusUpdate(messages::Message& msg);
+    void handlePositionUpdate(messages::Message& msg);
 
     AutoTrader* auto_trader_;
 

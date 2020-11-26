@@ -5,10 +5,13 @@
 #include <cstring>
 #include <iostream>
 #include <vector>
+#include <memory>
 
 #include "autotrader/autotrader.h"
 #include "market_link/market_link.h"
 #include "constants/messages.h"
+#include "pricing/future_midpoint.h"
+#include "execution/simple_executor.h"
 
 constexpr char EXEC_HOST[] = "127.0.0.1";
 constexpr int EXEC_PORT = 12341;
@@ -21,7 +24,9 @@ constexpr char SECRET[] = "password";
 
 int main() {
     auto market_link = MarketLink(EXEC_HOST, EXEC_PORT, INFO_HOST, INFO_PORT);
-    auto trader = AutoTrader(NAME, SECRET);
+    auto trader = AutoTrader(NAME, SECRET,
+                             std::make_unique<FutureMidpoint>(FutureMidpoint()),
+                             std::make_unique<SimpleExecutor>(SimpleExecutor()));
 
     try {
         market_link.initConnection();

@@ -40,79 +40,44 @@ void MarketLink::registerTrader(AutoTrader* auto_trader) {
 void MarketLink::runLoop() {
     auto msg = messages::Message{};
     while (1) {
-        if (!readNextMessage(msg)) {
-            continue;
-        }
-
-        std::cout << msg.type << "\n";
+        readNextMessage(msg);
 
         switch (msg.type) {
-            case messages::ORDER_BOOK_UPDATE_MESSAGE_TYPE: {
+            case messages::ORDER_BOOK_UPDATE_MESSAGE_TYPE:
                 handleOrderBookUpdate(msg);
-            }
+                break;
+            case messages::ORDER_STATUS_UPDATE_TYPE:
+                handleOrderStatusUpdate(msg);
+                break;
+            case messages::POSITION_UPDATE_TYPE:
+                handlePositionUpdate(msg);
+                break;
+            default:
+                std::cerr << "unknown message type: " << static_cast<int>(msg.type) << "\n";
         }
-        // if (msg.type == 6) {
-        //     auto order_book_update = msg.order_book_update;
-        //     order_book_update.sequence_no = ntohl(order_book_update.sequence_no);
-
-        //     std::vector<std::vector<int>> book;
-        //     for (int i = 0; i < 20; i++) {
-        //         if (i % 5 == 0) {
-        //             book.push_back(std::vector<int>{});
-        //         }
-
-        //         order_book_update.prices[i] = ntohl(order_book_update.prices[i]);
-
-        //         // being 0 is the same as it not existing
-        //         if (order_book_update.prices[i] != 0) {
-        //             book.back().push_back(order_book_update.prices[i]);
-        //         }
-        //     }
-
-        //     trader.orderBookUpdate(order_book_update.instrument == 0 ? FUTURE : ETF, order_book_update.sequence_no, book[0], book[1], book[2], book[3]);
-        // } else if (msg.type == 7) {
-        //     auto order_status_update = msg.order_status_update;
-        //     order_status_update.id = ntohl(order_status_update.id);
-        //     order_status_update.fill_volume = ntohl(order_status_update.fill_volume);
-        //     order_status_update.remaining_volume = ntohl(order_status_update.remaining_volume);
-        //     order_status_update.fees = ntohl(order_status_update.fees);
-
-        //     trader.orderStatusUpdate(order_status_update.id, order_status_update.fill_volume, order_status_update.remaining_volume, order_status_update.fees);
-        // } else if (msg.type == 8) {
-        //     auto position_update = msg.position_update;
-        //     position_update.etf_position = ntohl(position_update.etf_position);
-        //     position_update.future_position = ntohl(position_update.future_position);
-
-        //     trader.positionUpdate(position_update.future_position, position_update.etf_position);
-        // } else {
-        //     std::cerr << "unknown header type: " << (int) msg.type << " size: " << msg.size << '\n';
-        // }
     }
 }
 
 // Attempts to read the next message from either the execution socket
-// or the info socket, both are non-blocking.
-// Returns true if a message has been read.
-bool MarketLink::readNextMessage(messages::Message& msg) {
-    auto ret = read(exec_sock_, &msg, sizeof(msg));
-    if (ret < 0) {
-        if (errno != EWOULDBLOCK) {
+// or the info socket. Blocks until a message is received from either socket.
+void MarketLink::readNextMessage(messages::Message& msg) {
+    while (true) {
+        auto ret = read(exec_sock_, &msg, sizeof(msg));
+        if (ret >= 0) {
+            break;
+        } else if (ret < 0 && errno != EWOULDBLOCK) {
             throw errno;
         }
 
         ret = read(info_sock_, &msg, sizeof(msg));
-        if (ret < 0) {
-            if (errno != EWOULDBLOCK) {
-                throw errno;
-            }
-
-            return false;
+        if (ret >= 0) {
+            break;
+        } else if (ret < 0 && errno != EWOULDBLOCK) {
+            throw errno;
         }
     }
 
     msg.size = ntohs(msg.size);
-
-    return true;
 }
 
 void MarketLink::handleOrderBookUpdate(messages::Message& msg) {
@@ -135,6 +100,48 @@ void MarketLink::handleOrderBookUpdate(messages::Message& msg) {
 
     Instrument instrument = order_book_update.instrument == 0 ? FUTURE : ETF;
     auto_trader_->onOrderBookUpdate(instrument, sequence_no, book[0], book[1], book[2], book[3]);
+}
+
+void MarketLink::handlePositionUpdate(messages::Message& msg) {
+    auto position_update = msg.position_update;
+    position_update.etf_position = ntohl(position_update.etf_position);
+    position_update.future_position = ntohl(position_update.future_position);
+
+    auto_trader_->onPositionUpdate(position_update.future_position, position_update.etf_position);
+}
+
+void MarketLink::handleOrderStatusUpdate(messages::Message& msg) {
+    auto order_status_update = msg.order_status_update;
+    order_status_update.id = ntohl(order_status_update.id);
+    order_status_update.fill_volume = ntohl(order_status_update.fill_volume);
+    order_status_update.remaining_volume = ntohl(order_status_update.remaining_volume);
+    order_status_update.fees = ntohl(order_status_update.fees);
+
+    auto_trader_->onOrderStatusUpdate(order_status_update.id, order_status_update.fill_volume,
+                                      order_status_update.remaining_volume,
+                                      order_status_update.fees);
+}
+
+void MarketLink::cancelOrder(int order_id) {
+    auto msg = messages::Message{};
+    msg.size = htons(messages::CANCEL_MESSAGE_SIZE);
+    msg.type = messages::CANCEL_MESSAGE_TYPE;
+    msg.cancel_order.id = htonl(order_id);
+
+    send(exec_sock_, &msg, messages::CANCEL_MESSAGE_SIZE, 0);
+}
+
+void MarketLink::insertOrder(int id, Side side, int price, int volume, Lifespan lifespan) {
+    auto msg = messages::Message{};
+    msg.size = htons(messages::INSERT_MESSAGE_SIZE);
+    msg.type = messages::INSERT_MESSAGE_TYPE;
+    msg.insert_order.id = htonl(id);
+    msg.insert_order.side = side;
+    msg.insert_order.price = htonl(price);
+    msg.insert_order.volume = htonl(volume);
+    msg.insert_order.lifespan = lifespan;
+
+    send(exec_sock_, &msg, messages::INSERT_MESSAGE_SIZE, 0);
 }
 
 int MarketLink::createExecutionSocket() {

@@ -8,8 +8,15 @@
 namespace messages {
 
 constexpr int LOGIN_MESSAGE_SIZE = 73;
+constexpr int CANCEL_MESSAGE_SIZE = 7;
+constexpr int INSERT_MESSAGE_SIZE = 17;
+
+constexpr int CANCEL_MESSAGE_TYPE = 2;
+constexpr int INSERT_MESSAGE_TYPE = 4;
 constexpr int LOGIN_MESSAGE_TYPE = 5;
 constexpr int ORDER_BOOK_UPDATE_MESSAGE_TYPE = 6;
+constexpr int ORDER_STATUS_UPDATE_TYPE = 7;
+constexpr int POSITION_UPDATE_TYPE = 8;
 
 // Ensures no padding is added between struct fields, which matches
 // representation used during transit
