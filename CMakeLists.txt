@@ -14,12 +14,12 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/config")
 enable_testing()
 include(CTest)
 
-find_package(gsl-lite CONFIG REQUIRED)
-find_package(absl CONFIG REQUIRED)
+# find_package(absl CONFIG REQUIRED)
+# find_package(gsl-lite CONFIG REQUIRED)
 
 include(6771)
 
-add_subdirectory(source)
+add_subdirectory(src)
 # add_subdirectory(test)
 
-include_directories(include)
+include_directories(libs)

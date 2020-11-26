@@ -11,7 +11,7 @@ function(add_impl)
 
 	target_include_directories("${add_target_args_TARGET}"
 	                           PUBLIC
-	                           "${PROJECT_SOURCE_DIR}/include")
+	                           "${PROJECT_SOURCE_DIR}/libs")
 	target_include_directories("${add_target_args_TARGET}"
 	                           PRIVATE
 	                           "${add_target_args_INCLUDE}")
